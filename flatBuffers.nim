@@ -4,6 +4,9 @@ import macros
 
 import std / tables
 
+template debug(body: untyped): untyped =
+  when defined(DEBUG_FLATBUFFERS):
+    body
 
 ## The variant logic is inspired by Flatty's approach to variants.
 ## It's unfinished though. Once I have some time I'll probably fix
@@ -11,19 +14,19 @@ import std / tables
 proc getRecList(n: NimNode): NimNode =
   var typ = n.getTypeImpl()
   while typ.typeKind == ntyTypeDesc:
-    #echo typ.treerepr
     typ = typ[1].getTypeImpl()
-  #echo n.treerepr
-  #echo n.getTypeImpl.treerepr
   case typ.typeKind
-  of ntyObject, ntyGenericInst: result = typ[2] #n.getTypeImpl()[2]
+  of ntyObject, ntyGenericInst:
+    if typ.kind == nnkObjectTy:
+      result = typ[2]
+    else:
+      result = typ
   of ntyTuple: result = typ
   else:
     doAssert false, "Invalid type kind: " & $typ.typeKind
 
 iterator variantFields(typ: NimNode): NimNode =
   for ch in typ:
-    #echo ch.treerepr
     case ch.kind
     of nnkIdentDefs: discard
     of nnkRecCase:
@@ -38,7 +41,6 @@ macro isVariant(typ: typed, field: static string): untyped =
   for f in variantFields(typImpl):
     if f.strVal == field:
       result = newLit true
-  #echo result.treerepr
 
 macro isVariantObj(typ: typed): untyped =
   ## Checks if `field` refers to a variant object field
@@ -53,7 +55,9 @@ macro getVariantFields(typ: typed): untyped =
   result = nnkBracket.newTree()
   for f in variantFields(typImpl):
     result.add newLit(f.strVal)
-  #echo result.treerepr
+
+macro accessField(arg: typed, field: static string): untyped =
+  result = nnkDotExpr.newTree(arg, ident(field))
 
 macro getVariantField(n: typed): untyped =
   ## Only for single fields / first field
@@ -138,6 +142,7 @@ proc fromString*(s: string): Buffer =
     copyMem(result.data, s[0].addr, s.len)
 
 proc getSize*[T: object | tuple](x: T): int
+#proc getSize*[T: ref object](x: T): int
 proc getSize*[T: SimpleTypes](x: T): int =
   result = sizeof(T)
 
@@ -156,18 +161,22 @@ proc getSize*[T: string | cstring](x: T): int =
 
 proc getSize*[T](x: seq[T]): int =
   when T is SimpleTypes:
-    result = sizeof(int) + sizeof(T) * x.len
+    result = sizeof(int) + sizeof(T) * x.len ## data size + length field
   else:
-    #echo "get size of"
     inc result, sizeof(int)
     for el in x:
-      #echo "cannot iterate over nothing"
       inc result, getSize(el)
-    #echo "result 0"
 
 proc getSize*[T: object | tuple](x: T): int =
   for field, val in fieldPairs(x):
     inc result, getSize(val)
+
+proc getSize*[T: ref object](x: T): int =
+  # sizeof(x)
+  if x.isNil:
+    result = sizeof(int) # int for size indicator for the ref data
+  else:
+    result = sizeof(int) + getSize(x[])
 
 proc getSize*[T](x: typedesc[T]): int =
   var tmp: T
@@ -176,29 +185,23 @@ proc getSize*[T](x: typedesc[T]): int =
 proc `+%`(x: pointer, offset: int): pointer =
   result = cast[pointer](cast[uint](x) + offset.uint)
 
-#proc asFlat*[T](x: openArray[T]): Buffer
-
-proc copyData(buf: Buffer, target, source: pointer, size: int) =
+proc copyData*(buf: Buffer, target, source: pointer, size: int) =
   copyMem(target, source, size)
-  #var tbuf = cast[ptr UncheckedArray[char]](target)
-  #var sbuf = cast[ptr UncheckedArray[char]](source)
-  #for i in 0 ..< size:
-  #  echo "Copying: ", cast[uint](sbuf[i])
-  #  tbuf[i] = sbuf[i]
   inc buf.offsetOf, size
 
-proc asFlat[T: object | tuple](buf: var Buffer, x: T)
-proc asFlat[T: SimpleTypes](buf: var Buffer, x: T) =
+proc asFlat*[T: object | tuple](buf: var Buffer, x: T)
+proc asFlat*[T: ref object](buf: var Buffer, x: T)
+proc asFlat*[T: SimpleTypes](buf: var Buffer, x: T) =
   let size = getSize(x)
   var target = buf.data +% buf.offsetOf
   buf.copyData(target, address(x), size)
 
-proc asFlat[T: distinct](buf: var Buffer, x: T) =
+proc asFlat*[T: distinct](buf: var Buffer, x: T) =
   let size = getSize(x)
   var target = buf.data +% buf.offsetOf
   buf.copyData(target, address(x), size)
 
-proc asFlat[T; N: static int](buf: var Buffer, x: array[N, T]) =
+proc asFlat*[T; N: static int](buf: var Buffer, x: array[N, T]) =
   let size = getSize(x)
   var target = buf.data +% buf.offsetOf
   buf.copyData(target, address(x[0]), size)
@@ -209,7 +212,9 @@ proc getAddr(x: string): uint =
   else:
     result = 0
 
-proc asFlat[T: string | cstring](buf: var Buffer, x: T) =
+proc asFlat*[T: string | cstring](buf: var Buffer, x: T) =
+  debug:
+    echo "Writing string: ", x, " of len ", x.len
   # 1. copy the length
   buf.asFlat(x.len)
   # 2. now copy the content
@@ -217,7 +222,7 @@ proc asFlat[T: string | cstring](buf: var Buffer, x: T) =
     var target = buf.data +% buf.offsetOf
     buf.copyData(target, x[0].addr, x.len * sizeof(byte))
 
-proc asFlat[T](buf: var Buffer, x: seq[T]) =
+proc asFlat*[T](buf: var Buffer, x: seq[T]) =
   # 1. copy the length
   buf.asFlat(x.len)
   # 2. now copy the content
@@ -229,59 +234,69 @@ proc asFlat[T](buf: var Buffer, x: seq[T]) =
       for el in x:
         buf.asFlat(el)
 
-proc asFlat[T; U](buf: var Buffer, x: Table[T, U]) =
-  #echo "Writing table len : ", x.len
+proc asFlat*[T; U](buf: var Buffer, x: Table[T, U]) =
   buf.asFlat(x.len)
   for k, v in pairs(x):
-    #echo "writing kv ", (k, v)
     buf.asFlat((k, v))
 
-proc asFlat[T: object | tuple](buf: var Buffer, x: T) =
+macro writeFields(buf, x, fields: typed): untyped =
+  ## Given variant fields `fields` as a `nnkBracket` constructs
+  ## `asFlat` calls for each field from object `x` to write it to
+  ## the `buf`
+  doAssert fields.kind == nnkBracket, "Call `getVariantFields(T)` for argument"
+  result = newStmtList()
+  for f in fields:
+    result.add nnkCall.newTree(ident"asFlat",
+                               buf,
+                               nnkDotExpr.newTree(x, ident(f.strVal)))
+
+proc asFlat*[T: object | tuple](buf: var Buffer, x: T) =
+  ## Variant objects are stored as
+  ## `[variant_field_0, variant_field_1, ..., variant_field_N, remaining_fields]`
+  ## so that we can construct the correct variant object before hand.
   when isVariantObj(T):
-    #echo "writing: variant"
-    #buf.asFlat(x.getVariantField())
-    #echo "wrote variant"
     const fields = getVariantFields(T)
+    # 1. write all fields *first*
+    writeFields(buf, x, getVariantFields(T))
+    # 2. write data of remaining fields
     for field, val in fieldPairs(x):
-      #echo "field: ", field
-      #when field notin fields:
-      when field in fields:
-        # copy zero instead
-        var tmp = default(typeof(val))
-        buf.asFlat(tmp)
-      else:
+      when field notin fields: # skip variant fields!
         buf.asFlat(val)
   else:
     for field, val in fieldPairs(x):
+      debug:
+        when typeof(val) is SimpleTypes:
+          echo "Writing (non ref, non variant): ", field, " = ", val
+        else:
+          echo "Writing (non ref, non variant): ", field, " = ", typeof(val)
       buf.asFlat(val)
 
-  #for field, val in fieldPairs(x):
-  #  buf.asFlat(val)
+proc asFlat*[T: ref object](buf: var Buffer, x: T) =
+  debug:
+    echo "Flatten ref ", T, " is nil? ", x.isNil
+  if x.isNil:
+    # Store length as 0
+    buf.asFlat(0) # nothing else to do
+  else:
+    # 1. store length of data
+    buf.asFlat(getSize(x[]))
+    # 2. store data itself
+    buf.asFlat(x[])
+
+proc asFlat*[T: ptr](buf: var Buffer, x: T) =
+  when T is ptr UncheckedArray:
+    ## handle as array. HOW
+    doAssert false, "Raw ptr UncheckedArray encountered. Needs size information!"
+  else:
+    if not x.isNil:
+      buf.asFlat(x[])
 
 proc writeBuffer*(b: Buffer, fname = "/tmp/hexdat.dat") =
   writeFile(fname, toOpenArray(cast[ptr UncheckedArray[byte]](b.data), 0, b.size-1))
 
-#proc asFlat*[T](x: openArray[T]): Buffer =
-#  if x.len > 0:
-#    # get real size of data. Walsk all elements if non trivial and gets their size.
-#    # Includes (len, pointer) pairs for string / seq
-#    let size = getSize(@x)
-#    result = newBuf(size + sizeof(int))
-#    echo "Writing length: ", x.len, " of type: ", T
-#    result.asFlat(x.len)
-#    for el in x:
-#      result.asFlat(el)
-#      when typeof(T) isnot tuple|object: # in the other case incrementation is done in the `asFlat` proc above
-#        inc result.offsetOf, sizeof(T)
-#  else:
-#    result = newBuf(0)
-#
-#proc asFlat*[T: not openArray](x: T): Buffer =
-#  result = asFlat([x])
-
 proc asFlat*[T](x: T): Buffer =
+  ## Converts a given Nim object into a `Buffer`
   let size = getSize(x)
-  #echo "Object ", T, " of size: ", size
   result = newBuf(size)
   result.asFlat(x)
 
@@ -291,18 +306,13 @@ proc flatTo*[T: SimpleTypes | pointer | enum](x: var T, buf: Buffer) =
   var source = buf.data +% buf.offsetOf
   buf.copyData(addr(x), source, size)
 
-#proc flatTo*[T: enum](x: var T, buf: Buffer) =
-#  let size = getSize(x)
-#  var source = buf.data +% buf.offsetOf
-#  buf.copyData(addr(x), source, size)
-
 ## XXX: `flatTo` for fixed length arrays!
 proc flatTo*[T: array](x: var T, buf: Buffer) =
   let size = getSize(x)
   var source = buf.data +% buf.offsetOf
   buf.copyData(addr(x), source, size)
 
-proc readInt(buf: Buffer): int =
+proc readInt*(buf: Buffer): int =
   flatTo(result, buf)
 
 proc flatTo*[T: string | cstring](x: var T, buf: Buffer) =
@@ -339,48 +349,77 @@ proc flatTo*[T; U](x: var Table[T, U], buf: Buffer) =
     kv.flatTo(buf)
     x[kv[0]] = kv[1]
 
+macro newVariantObj(typ, fields, args: typed): untyped =
+  ## Constructs a variant object given variant field names `fields`
+  ## and the values to be written as stored in the variable `args`.
+  ## If more than one field, `args` is an anonymous `tuple`.
+  doAssert fields.kind == nnkBracket, "Call `getVariantFields(T)` for argument"
+  doAssert args.kind == nnkSym # Must be an identifier for a tuple!
+  result = nnkObjConstr.newTree(typ)
+  for i in 0 ..< fields.len:
+    let f = fields[i]
+    doAssert f.kind == nnkStrLit
+    if fields.len > 1:
+      result.add nnkExprColonExpr.newTree(
+        ident(f.strVal),
+        nnkBracketExpr.newTree(args, newLit i)
+      )
+    else: # only a single field, just use `args` directly! Not a tuple
+      result.add nnkExprColonExpr.newTree(
+        ident(f.strVal),
+        args
+      )
+  debug:
+    echo "NEW VARIANT OBJ= ", result.repr
+
+macro variantFieldTuple(typ, fields: typed): untyped =
+  doAssert fields.kind == nnkBracket, "Call `getVariantFields(T)` for argument"
+  result = nnkPar.newTree()
+  for f in fields:
+    result.add quote do:
+      typeof(accessField(`typ`, `f`))
+  debug:
+    echo "VARIANT FIELD TUP: ", result.repr
+
 proc flatTo*[T: object | tuple](x: var T, buf: Buffer) =
+  debug:
+    echo "flatTo obj : ", T
   when isVariantObj(T):
-    #var tmp: typeof(x.getVariantField())
-    #tmp.flatTo(buf)
-    #new(x, tmp)
     const fields = getVariantFields(T)
+    # 1. construct tuple to store variant object fields
+    var varKindDat: variantFieldTuple(x, getVariantFields(T))
+    # 2. Read the variant object fields
+    varKindDat.flatTo(buf)
+    # 3. construct valid variant object
+    x = newVariantObj(T, getVariantFields(T), varKindDat)
+    # 4. fill it
     for field, val in fieldPairs(x):
-      #echo "field: ", field, " (and vf ", fields, " )"
-      when field in fields:
-        # skip ahead
-        inc buf.offsetOf, getSize(val)
-      else:
+      when field notin fields: # skip variantfields
         val.flatTo(buf)
-      #when field notin fields:
-      #  val.flatTo(buf)
   else:
     for field, val in fieldPairs(x):
+      debug:
+        echo "FLAT TO (non ref, non variant), ", field, " = ", typeof(val)
       val.flatTo(buf)
+  debug:
+    echo "======== ", T, " ========= ", x
+
+proc flatTo*[T: ref object](x: var T, buf: Buffer) =
+  # 1. read length
+  debug:
+    echo "flat To ref obj ", T
+  let length = readInt(buf)
+  if length > 0:
+    x = T() # initialize it
+    # and fill
+    x[].flatTo(buf)
 
 proc flatTo*[T](buf: Buffer): T =
   ## Returns a sequence of `T` from the given buffer, taking into account conversion from
   ## `ptr char` to `string` and nested buffer children to `seq[U]`.
-  #echo "type T ", T
   # 1. reset offset of in case this buffer was already used to write to
   buf.offsetOf = 0
   result.flatTo(buf)
-  #echo "Getting size is broken:"
-  ##let siz = getSize(T)
-  ##echo "hah, siz is 0 ", siz
-  ##let len = buf.size div siz ## This is not accurate!
-  ## set `offsetOf` to 0 to copy from beginning
-  #buf.offsetOf = 0
-  ##echo "Length is?? ", len
-  #when T is SimpleTypes:
-  #  result = newSeqOfCap[T](buf.size div sizeof(T))
-  #else:
-  #  result = newSeqOfCap[T](256) # just go with something
-  #while buf.offsetOf < buf.size:
-  #  # copy element by element
-  #  var tmp: T
-  #  tmp.flatTo(buf)
-  #  result.add tmp
 
 when isMainModule:
   block A:
