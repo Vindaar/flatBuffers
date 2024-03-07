@@ -1,0 +1,4 @@
+* v0.1.1
+- improve support for variant objects. Now multi variant objects are
+  supported
+- add submodule ~flatBuffers_tensor~ for arraymancer tensors  
