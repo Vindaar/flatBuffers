@@ -22,11 +22,9 @@ proc asFlat*[T](buf: var Buffer, t: Tensor[T]) =
       buf.asFlat(t[i])
 
 proc flatTo*[T](x: var Tensor[T], buf: Buffer) =
-  echo "flat to tensor:"
   # 1. read size
   let size = readInt(buf)
   # 2. copy data
-  echo "Got size: ", size
   x = newTensorUninit[T](size)
   when T is KnownSupportsCopyMem:
     let source = buf.data +% buf.offsetOf
