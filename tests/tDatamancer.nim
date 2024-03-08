@@ -1,6 +1,6 @@
 import datamancer
 import ../flatBuffers
-import ../flatBuffers_tensor
+import ../flatBuffers/flatBuffers_tensor
 
 let df = toDf({"x" : @[1, 2, 3], "y" : @[5.5, 2.1, 1.484],
                "z" : @["helow", "world", "foo"], "c" : "Hehehe"})
