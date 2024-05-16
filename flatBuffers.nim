@@ -414,6 +414,8 @@ proc flatTo*[T: ref object](x: var T, buf: Buffer) =
     # and fill
     x[].flatTo(buf)
 
+proc flatTo*[T: distinct](x: var T, buf: Buffer) = flatTo(distinctBase(x), buf)
+
 proc flatTo*[T](buf: Buffer): T =
   ## Returns a sequence of `T` from the given buffer, taking into account conversion from
   ## `ptr char` to `string` and nested buffer children to `seq[U]`.
