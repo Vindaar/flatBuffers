@@ -159,7 +159,7 @@ proc getSize*[T: array](x: T): int =
 proc getSize*[T: string | cstring](x: T): int =
   result = sizeof(int) + sizeof(byte) * x.len
 
-proc getSize*[T](x: seq[T]): int =
+proc getSize*[T](x: openArray[T]): int =
   when T is SimpleTypes:
     result = sizeof(int) + sizeof(T) * x.len ## data size + length field
   else:
@@ -222,7 +222,7 @@ proc asFlat*[T: string | cstring](buf: var Buffer, x: T) =
     var target = buf.data +% buf.offsetOf
     buf.copyData(target, x[0].addr, x.len * sizeof(byte))
 
-proc asFlat*[T](buf: var Buffer, x: seq[T]) =
+proc asFlat*[T](buf: var Buffer, x: openArray[T]) =
   # 1. copy the length
   buf.asFlat(x.len)
   # 2. now copy the content
