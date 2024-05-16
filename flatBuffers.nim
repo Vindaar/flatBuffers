@@ -147,9 +147,6 @@ proc getSize*[T: SimpleTypes](x: T): int =
   result = sizeof(T)
 
 import typetraits
-proc getSize*[T: distinct](x: T): int =
-  result = sizeof(distinctBase(T))
-
 proc getSize*[T: pointer|ptr](x: T): int =
   result = sizeof(T)
 
@@ -178,6 +175,8 @@ proc getSize*[T: ref object](x: T): int =
   else:
     result = sizeof(int) + getSize(x[])
 
+proc getSize*[T: distinct](x: T): int = result = getSize(distinctBase(x))
+
 proc getSize*[T](x: typedesc[T]): int =
   var tmp: T
   result = getSize(tmp)
@@ -192,11 +191,6 @@ proc copyData*(buf: Buffer, target, source: pointer, size: int) =
 proc asFlat*[T: object | tuple](buf: var Buffer, x: T)
 proc asFlat*[T: ref object](buf: var Buffer, x: T)
 proc asFlat*[T: SimpleTypes](buf: var Buffer, x: T) =
-  let size = getSize(x)
-  var target = buf.data +% buf.offsetOf
-  buf.copyData(target, address(x), size)
-
-proc asFlat*[T: distinct](buf: var Buffer, x: T) =
   let size = getSize(x)
   var target = buf.data +% buf.offsetOf
   buf.copyData(target, address(x), size)
@@ -290,6 +284,8 @@ proc asFlat*[T: ptr](buf: var Buffer, x: T) =
   else:
     if not x.isNil:
       buf.asFlat(x[])
+
+proc asFlat*[T: distinct](buf: var Buffer, x: T) = buf.asFlat(distinctBase(x))
 
 proc writeBuffer*(b: Buffer, fname = "/tmp/hexdat.dat") =
   writeFile(fname, toOpenArray(cast[ptr UncheckedArray[byte]](b.data), 0, b.size-1))
