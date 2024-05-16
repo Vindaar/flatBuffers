@@ -21,6 +21,10 @@ proc asFlat*[T](buf: var Buffer, t: Tensor[T]) =
     for i in 0 ..< t.size:
       buf.asFlat(t[i])
 
+proc asFlat*[T](t: Tensor[T]): Buffer =
+  result = newBuf(t.size)
+  result.asFlat(t)
+
 proc flatTo*[T](x: var Tensor[T], buf: Buffer) =
   # 1. read size
   let size = readInt(buf)
