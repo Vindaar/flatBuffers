@@ -457,11 +457,12 @@ import std / memfiles
 from std / os import removeFile
 proc loadBuffer*[T](fname: string, deleteFile = false): T =
   ## Convenience helper to directly load a type `T` from a given file `fname`
-  let mfile = memfiles.open(fname)
+  var mfile = memfiles.open(fname)
   if deleteFile: # can already delete the file. Useful if we want to clean up fast
     removeFile(fname)
   let b = newBuf(mfile.mem, mfile.size)
   result = flatTo[T](b)
+  memfiles.close(mfile)
 
 when isMainModule:
   block A:
