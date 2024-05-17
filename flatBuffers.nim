@@ -150,11 +150,18 @@ import typetraits
 proc getSize*[T: pointer|ptr](x: T): int =
   result = sizeof(T)
 
+proc getSize*[T: proc](x: T): int =
+  ## We do not attempt to serialize a proc!
+  result = 0
+
 proc getSize*[T: array](x: T): int =
   result = sizeof(T)
 
 proc getSize*[T: string | cstring](x: T): int =
   result = sizeof(int) + sizeof(byte) * x.len
+
+proc getSize*[T](x: set[T]): int =
+  result = sizeof(int) + x.card * sizeof(T)
 
 proc getSize*[T](x: openArray[T]): int =
   when T is SimpleTypes:
@@ -199,6 +206,13 @@ proc asFlat*[T; N: static int](buf: var Buffer, x: array[N, T]) =
   let size = getSize(x)
   var target = buf.data +% buf.offsetOf
   buf.copyData(target, address(x[0]), size)
+
+proc asFlat*[T](buf: var Buffer, x: set[T]) =
+  # 1. copy the length
+  buf.asFlat(x.card)
+  # 2. copy the content (element wise; could convert to `seq` and copy flat)
+  for el in x:
+    buf.asFlat(el)
 
 proc getAddr(x: string): uint =
   if x.len > 0:
@@ -277,11 +291,12 @@ proc asFlat*[T: ref object](buf: var Buffer, x: T) =
     # 2. store data itself
     buf.asFlat(x[])
 
-#proc asFlat*[T: ptr](buf: var Buffer, x: T) =
-#  ## XXX: need to differentiate between pointers to things we can or cannot
-#  ## deference!
-#  if not x.isNil:
-#    buf.asFlat(x[])
+proc asFlat*[T: proc](buf: var Buffer, x: T) =
+  ## XXX: need to differentiate between pointers to things we can or cannot
+  ## deference!
+  discard # nothing to do, cannot serialize a proc
+  #if not x.isNil:
+  #  buf.asFlat(x[])
 
 proc asFlat*[T: distinct](buf: var Buffer, x: T) = buf.asFlat(distinctBase(x))
 
@@ -315,6 +330,15 @@ proc flatTo*[T: string | cstring](x: var T, buf: Buffer) =
     x.setLen(length)
     let size = length * sizeof(byte)
     buf.copyData(x[0].addr, source, size)
+
+proc flatTo*[T](x: var set[T], buf: Buffer) =
+  # 1. read the length
+  let length = readInt(buf)
+  # 2. read the data
+  for i in 0 ..< length:
+    var el: T ## `set[T]` is only for simple types!
+    el.flatTo(buf)
+    x.incl el
 
 proc flatTo*[T](x: var seq[T], buf: Buffer) =
   # construct a child buffer.
@@ -404,6 +428,9 @@ proc flatTo*[T: ref object](x: var T, buf: Buffer) =
     x = T() # initialize it
     # and fill
     x[].flatTo(buf)
+
+proc flatTo*[T: proc](x: var T, buf: Buffer) = discard
+  ## We do not attempt to (de)serialize procs!
 
 proc flatTo*[T: distinct](x: var T, buf: Buffer) = flatTo(distinctBase(x), buf)
 
