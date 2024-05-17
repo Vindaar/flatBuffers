@@ -1,3 +1,5 @@
+* v0.1.4
+- add ~save/loadBuffer~ interface to directly store to or load from a path
 * v0.1.3
 - add direct ~asFlat~ support for Tensors
 - add support for ~distinct~ types
