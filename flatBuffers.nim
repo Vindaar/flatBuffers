@@ -277,13 +277,11 @@ proc asFlat*[T: ref object](buf: var Buffer, x: T) =
     # 2. store data itself
     buf.asFlat(x[])
 
-proc asFlat*[T: ptr](buf: var Buffer, x: T) =
-  when T is ptr UncheckedArray:
-    ## handle as array. HOW
-    doAssert false, "Raw ptr UncheckedArray encountered. Needs size information!"
-  else:
-    if not x.isNil:
-      buf.asFlat(x[])
+#proc asFlat*[T: ptr](buf: var Buffer, x: T) =
+#  ## XXX: need to differentiate between pointers to things we can or cannot
+#  ## deference!
+#  if not x.isNil:
+#    buf.asFlat(x[])
 
 proc asFlat*[T: distinct](buf: var Buffer, x: T) = buf.asFlat(distinctBase(x))
 
