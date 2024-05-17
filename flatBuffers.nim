@@ -287,9 +287,6 @@ proc asFlat*[T: ptr](buf: var Buffer, x: T) =
 
 proc asFlat*[T: distinct](buf: var Buffer, x: T) = buf.asFlat(distinctBase(x))
 
-proc writeBuffer*(b: Buffer, fname = "/tmp/hexdat.dat") =
-  writeFile(fname, toOpenArray(cast[ptr UncheckedArray[byte]](b.data), 0, b.size-1))
-
 proc asFlat*[T](x: T): Buffer =
   ## Converts a given Nim object into a `Buffer`
   let size = getSize(x)
@@ -418,6 +415,28 @@ proc flatTo*[T](buf: Buffer): T =
   # 1. reset offset of in case this buffer was already used to write to
   buf.offsetOf = 0
   result.flatTo(buf)
+
+proc saveBuffer*(b: Buffer, fname: string) =
+  ## Convenience helper to write a buffer to a file
+  writeFile(fname, toOpenArray(cast[ptr UncheckedArray[byte]](b.data), 0, b.size-1))
+
+proc writeBuffer*(b: Buffer, fname: string) {.deprecated: "Please use `saveBuffer` instead.".} =
+  saveBuffer(b, fname)
+
+proc saveBuffer*[T](x: T, fname: string) =
+  ## Convenience helper to write a type T as a flat binary data file `fname`
+  let b = asFlat(x)
+  b.saveBuffer(fname)
+
+import std / memfiles
+from std / os import removeFile
+proc loadBuffer*[T](fname: string, deleteFile = false): T =
+  ## Convenience helper to directly load a type `T` from a given file `fname`
+  let mfile = memfiles.open(fname)
+  if deleteFile: # can already delete the file. Useful if we want to clean up fast
+    removeFile(fname)
+  let b = newBuf(mfile.mem, mfile.size)
+  result = flatTo[T](b)
 
 when isMainModule:
   block A:
