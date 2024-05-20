@@ -38,10 +38,12 @@ proc flatTo*[T](x: var Tensor[T], buf: Buffer) =
   shape.flatTo(buf)
   if shape.len > 0:
     # 2. copy data
-    x = newTensorUninit[T](shape)
+    let size = shape.prod()
+    x = newTensorUninit[T](size)
     when T is KnownSupportsCopyMem:
       let source = buf.data +% buf.offsetOf
       buf.copyData(x.toUnsafeView(), source, size * sizeof(T))
     else:
       for i in 0 ..< size:
-        flatTo(x.unsafe_raw_offset[i], buf)
+        flatTo(x[i], buf)
+    x = x.reshape(shape)
