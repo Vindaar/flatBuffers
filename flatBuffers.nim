@@ -440,8 +440,7 @@ when isMainModule:
     data.add (0xAFFEAFFE.int, (2342.2, "hello"), @["A", "HALO"])
     #buf.add (0x13371337.int, ("", 52.2), @["B", "FOO"])
     let buf = asFlat(data)
-
-    let xx = flatTo[(int, (float, string), seq[string])](buf)
+    let xx = flatTo[seq[(int, (float, string), seq[string])]](buf)
     echo xx
 
   block B:
@@ -450,7 +449,7 @@ when isMainModule:
     #data.add (0x13371337.int, ("", 52.2), @["B", "FOO"])
     let buf = asFlat(data)
 
-    let xx = flatTo[(int, (float, string), seq[int])](buf)
+    let xx = flatTo[seq[(int, (float, string), seq[int])]](buf)
     echo xx
 
   block C:
@@ -464,11 +463,7 @@ when isMainModule:
 
     var cmd = Command(cmd: x, outputFile: y)
     let buf = asFlat(@[cmd, cmd])
-    echo buf
 
-    writeBuffer(buf)
-
-    echo "\n\nREADING"
-
-    let cmd2 = flatTo[Command](buf)
+    writeBuffer(buf, "/tmp/bin.dat")
+    let cmd2 = flatTo[seq[Command]](buf)
     echo cmd2
