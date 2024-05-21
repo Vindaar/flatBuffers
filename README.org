@@ -11,8 +11,8 @@ Typically, whenever Nim objects are used that either contain ~string~
 or ~seq~ types, anything involving ~copyMem~ or otherwise procedures
 that require the data to be flat in memory are out.
 
-By using ~copyFlat~ (possibly combined with ~toString~) you can
-convert a Nim object into a ~Buffer~ (or ~string~). Using ~fromFlat[T]~ you convert
+By using ~asFlat~ (possibly combined with ~toString~) you can
+convert a Nim object into a ~Buffer~ (or ~string~). Using ~flatTo[T]~ you convert
 a ~Buffer~ back to a ~T~. ~fromString~ can be used to reconstruct a
 ~Buffer~ from a ~string~ created via ~toString~.
 
