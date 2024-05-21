@@ -8,9 +8,9 @@ template debug(body: untyped): untyped =
   when defined(DEBUG_FLATBUFFERS):
     body
 
-## The variant logic is inspired by Flatty's approach to variants.
-## It's unfinished though. Once I have some time I'll probably fix
-## it to work correctly.
+## The variant logic is inspired by Flatty's approach to variants, meaning we
+## store the variant fields first in the binary data. Note that it works for
+## any number of variants in a single type.
 proc getRecList(n: NimNode): NimNode =
   var typ = n.getTypeImpl()
   while typ.typeKind == ntyTypeDesc:
@@ -34,14 +34,6 @@ iterator variantFields(typ: NimNode): NimNode =
     else:
       discard #echo ch.treerepr
 
-macro isVariant(typ: typed, field: static string): untyped =
-  ## Checks if `field` refers to a variant object field
-  let typImpl = getRecList(typ)
-  result = newLit false
-  for f in variantFields(typImpl):
-    if f.strVal == field:
-      result = newLit true
-
 macro isVariantObj(typ: typed): untyped =
   ## Checks if `field` refers to a variant object field
   let typImpl = getRecList(typ)
@@ -58,29 +50,6 @@ macro getVariantFields(typ: typed): untyped =
 
 macro accessField(arg: typed, field: static string): untyped =
   result = nnkDotExpr.newTree(arg, ident(field))
-
-macro getVariantField(n: typed): untyped =
-  ## Only for single fields / first field
-  let typImpl = getRecList(n)
-  result = nnkBracket.newTree()
-  for f in variantFields(typImpl):
-    return nnkDotExpr.newTree(n, f)
-
-proc getVariantFieldName(n: NimNode): NimNode =
-  ## Only for single fields / first field
-  let typImpl = getRecList(n)
-  result = nnkBracket.newTree()
-  for f in variantFields(typImpl):
-    return ident(f.strVal)
-
-macro new*(v: typed, d: typed): untyped =
-  ## Creates a new object variant with the discriminator field.
-  ## -> This is taken from `flatty`!
-  let
-    typ = v.getTypeInst()
-    fieldName = getVariantFieldName(v)
-  return quote do:
-    `v` = `typ`(`fieldName`: `d`)
 
 template address(x: typed): untyped =
   when (NimMajor, NimMinor, NimPatch) < (1, 9, 0):
@@ -108,7 +77,9 @@ proc `=destroy`(x: var BufferObj) =
     x.data = nil
 
 proc `$`*(b: Buffer): string =
-  result = "Buffer(size: " & $b.size & ", owned: " & $b.owned & ", data: " & $b.data.repr & ", offsetOf: " & $b.offsetOf & ", children: " & $b.children.len & ")"
+  result = "Buffer(size: " & $b.size & ", owned: " & $b.owned & ", data: " &
+    $b.data.repr & ", offsetOf: " & $b.offsetOf & ", children: " &
+    $b.children.len & ")"
 
 proc newBuf*(size: int, owned = true): Buffer =
   if size > 0:
@@ -142,7 +113,6 @@ proc fromString*(s: string): Buffer =
     copyMem(result.data, s[0].addr, s.len)
 
 proc getSize*[T: object | tuple](x: T): int
-#proc getSize*[T: ref object](x: T): int
 proc getSize*[T: SimpleTypes](x: T): int =
   result = sizeof(T)
 
