@@ -1,8 +1,4 @@
-import std / macros
-
-import macros
-
-import std / tables
+import std / [macros, tables]
 
 template debug(body: untyped): untyped =
   when defined(DEBUG_FLATBUFFERS):
@@ -446,8 +442,7 @@ proc flatTo*[T: proc](x: var T, buf: Buffer) = discard
 proc flatTo*[T: distinct](x: var T, buf: Buffer) = flatTo(distinctBase(x), buf)
 
 proc flatTo*[T](buf: Buffer): T =
-  ## Returns a sequence of `T` from the given buffer, taking into account conversion from
-  ## `ptr char` to `string` and nested buffer children to `seq[U]`.
+  ## Loads the data stored in `buf` and returns it as `T`.
   # 1. reset offset of in case this buffer was already used to write to
   buf.offsetOf = 0
   result.flatTo(buf)
