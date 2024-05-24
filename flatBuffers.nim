@@ -280,13 +280,13 @@ proc flatTo*[T](buf: Buffer): T
 proc flatTo*[T: SimpleTypes | pointer | enum](x: var T, buf: Buffer) =
   let size = getSize(x)
   var source = buf.data +% buf.offsetOf
-  buf.copyData(addr(x), source, size)
+  buf.copyData(address(x), source, size)
 
 ## XXX: `flatTo` for fixed length arrays!
 proc flatTo*[T: array](x: var T, buf: Buffer) =
   let size = getSize(x)
   var source = buf.data +% buf.offsetOf
-  buf.copyData(addr(x), source, size)
+  buf.copyData(address(x), source, size)
 
 proc readInt*(buf: Buffer): int =
   flatTo(result, buf)
@@ -299,7 +299,7 @@ proc flatTo*[T: string | cstring](x: var T, buf: Buffer) =
   if source != nil and length > 0:
     x.setLen(length)
     let size = length * sizeof(byte)
-    buf.copyData(x[0].addr, source, size)
+    buf.copyData(x[0].address, source, size)
 
 proc flatTo*[T](x: var set[T], buf: Buffer) =
   # 1. read the length
@@ -321,7 +321,7 @@ proc flatTo*[T](x: var seq[T], buf: Buffer) =
     # flat, all in one go
     let source = buf.data +% buf.offsetOf
     if source != nil and len > 0:
-      buf.copyData(x[0].addr, source, sizeof(T) * x.len)
+      buf.copyData(x[0].address, source, sizeof(T) * x.len)
   else:
     # copy element by element
     for i in 0 ..< x.len:
