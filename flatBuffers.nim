@@ -303,7 +303,7 @@ proc asFlat*[T](x: T): Buffer =
   result.asFlat(x)
 
 proc flatTo*[T](buf: Buffer): T
-proc flatTo*[T: SimpleTypes | pointer | enum](x: var T, buf: Buffer) =
+proc flatTo*[T: SimpleTypes | pointer](x: var T, buf: Buffer) =
   let size = getSize(x)
   var source = buf.data +% buf.offsetOf
   buf.copyData(address(x), source, size)
@@ -327,8 +327,14 @@ proc flatTo*[T: string | cstring](x: var T, buf: Buffer) =
     let size = length * sizeof(byte)
     buf.copyData(x[0].address, source, size)
 
-proc flatTo*[T](x: var set[T], buf: Buffer) =
+proc flatTo*[T: SimpleTypes](x: var set[T], buf: Buffer) =
   ## Sets can be stored in 2 different ways. Packed or full.
+  ##
+  ## NOTE: For reasons I don't comprehend, if we don't restrict the type `T`
+  ## to something reasonable, the Nim compiler also tries to compile the code
+  ## for a bunch of crazy things like `set[seq[(int, (float, string), seq[string])]`
+  ## (from a test case). Given that sets are only defined for these simple
+  ## types, it doesn't matter.
   # 1. read the set's storage value
   var storage: SetStorage
   storage.flatTo(buf)
