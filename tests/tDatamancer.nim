@@ -7,7 +7,7 @@ let df = toDf({"x" : @[1, 2, 3], "y" : @[5.5, 2.1, 1.484],
 
 echo df
 echo df.data.repr
-df.asFlat.writeBuffer()
+df.asFlat.writeBuffer("/tmp/hexdat.dat")
 
 echo "\n\n\n\n\n\n"
 
