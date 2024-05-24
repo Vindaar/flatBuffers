@@ -411,19 +411,24 @@ proc flatTo*[T](buf: Buffer): T =
   buf.offsetOf = 0
   result.flatTo(buf)
 
+import std / memfiles
 proc saveBuffer*(b: Buffer, fname: string) =
   ## Convenience helper to write a buffer to a file
-  writeFile(fname, toOpenArray(cast[ptr UncheckedArray[byte]](b.data), 0, b.size-1))
+  var mfile = memfiles.open(fname, fmWrite, newFileSize = b.size)
+  copyMem(mfile.mem, b.data, b.size)
+  mfile.close()
 
 proc writeBuffer*(b: Buffer, fname: string) {.deprecated: "Please use `saveBuffer` instead.".} =
   saveBuffer(b, fname)
 
 proc saveBuffer*[T](x: T, fname: string) =
   ## Convenience helper to write a type T as a flat binary data file `fname`
-  let b = asFlat(x)
-  b.saveBuffer(fname)
+  let size = x.getSize()
+  var mfile = memfiles.open(fname, fmWrite, newFileSize = size)
+  var b = newBuf(mfile.mem, size)
+  b.asFlat(x)
+  mfile.close()
 
-import std / memfiles
 from std / os import removeFile
 proc loadBuffer*[T](fname: string, deleteFile = false): T =
   ## Convenience helper to directly load a type `T` from a given file `fname`
