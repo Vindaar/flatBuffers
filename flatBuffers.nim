@@ -130,8 +130,25 @@ proc getSize*[T: array](x: T): int =
 proc getSize*[T: string | cstring](x: T): int =
   result = sizeof(int) + sizeof(byte) * x.len
 
+## `FullSets` is a compile time variable, which decides how built in sets are
+## stored. If `-d:FullSets=false` (default) we will pack the data of the set
+## so that only `card(theSet)` elements are stored. If `-d:FullSets=true` we
+## store the entire memory storage of the set. For non sparse sets this
+## may be worth while due to much faster performance. For sparse sets though
+## the memory overhead may not make it worthwhile (especially if using many
+## mostly emtpy `set[uint16]`).
+## An additional byte is stored as a prefix, which indicates the storage method
+## allowing to load sets regardless of the compile option.
+const FullSets* {.booldefine.} = false
+
+type
+  SetStorage = enum ssPacked, ssFull
+
 proc getSize*[T](x: set[T]): int =
-  result = sizeof(int) + x.card * sizeof(T)
+  when FullSets:
+    result = sizeof(SetStorage) + sizeof(x)
+  else:
+    result = sizeof(SetStorage) + sizeof(int) + x.card * sizeof(T)
 
 proc getSize*[T](x: openArray[T]): int =
   when T is SimpleTypes:
@@ -178,11 +195,24 @@ proc asFlat*[T; N: static int](buf: var Buffer, x: array[N, T]) =
   buf.copyData(target, address(x[0]), size)
 
 proc asFlat*[T](buf: var Buffer, x: set[T]) =
-  # 1. copy the length
-  buf.asFlat(x.card)
-  # 2. copy the content (element wise; could convert to `seq` and copy flat)
-  for el in x:
-    buf.asFlat(el)
+  ## There are two ways to store inbuilt sets. Either as packed data, only storing the
+  ## elements actually contained in the set *or* as a full flat memory set. I.e. just storing
+  ## the built in set's memory.
+  when FullSets:
+    # 1. write that we store the data as a full st
+    buf.asFlat(ssFull)
+    # 2. copy the entire set's memory
+    let size = sizeof(x) # IMPORTANT: must use `sizeof` here
+    let target = buf.data +% buf.offsetOf
+    buf.copyData(target, address(x), size)
+  else:
+    # 1. write that we store the data as packed
+    buf.asFlat(ssPacked)
+    # 2. copy the length (number of included entries)
+    buf.asFlat(x.card)
+    # 3. copy the content (element wise; could convert to `seq` and copy flat)
+    for el in x:
+      buf.asFlat(el)
 
 proc getAddr(x: string): uint =
   if x.len > 0:
@@ -302,13 +332,24 @@ proc flatTo*[T: string | cstring](x: var T, buf: Buffer) =
     buf.copyData(x[0].address, source, size)
 
 proc flatTo*[T](x: var set[T], buf: Buffer) =
-  # 1. read the length
-  let length = readInt(buf)
-  # 2. read the data
-  for i in 0 ..< length:
-    var el: T ## `set[T]` is only for simple types!
-    el.flatTo(buf)
-    x.incl el
+  ## Sets can be stored in 2 different ways. Packed or full.
+  # 1. read the set's storage value
+  var storage: SetStorage
+  storage.flatTo(buf)
+  case storage
+  of ssFull:
+    # 2. copy the entire buffer
+    let size = sizeof(x) # IMPORTANT: must use `sizeof` directly here!
+    let source = buf.data +% buf.offsetOf
+    buf.copyData(address(x), source, size)
+  of ssPacked:
+    # 2. read the length
+    let length = readInt(buf)
+    # 3. read the data
+    for i in 0 ..< length:
+      var el: T ## `set[T]` is only for simple types!
+      el.flatTo(buf)
+      x.incl el
 
 proc flatTo*[T](x: var seq[T], buf: Buffer) =
   # construct a child buffer.
