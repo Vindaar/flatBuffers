@@ -1,3 +1,12 @@
+* v0.1.5
+- improve performance of ~saveBuffer~ by writing to ~memfile~ directly
+  instead of to a buffer first (also special cases ~saveBuffer~ taking
+  an object vs taking a ~Buffer~)
+- add a CT option ~-d:FullSets=true/false~, which decides how built in
+  sets are stored. If it is true, we store the entire memory of the
+  set (which is more performant, but uses possibly much more memory).
+  Note: loading data works independent of how the set was saved,
+  due to an additional byte to indicate the storage method.
 * v0.1.4
 - add ~save/loadBuffer~ interface to directly store to or load from a
   path
