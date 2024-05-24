@@ -9,3 +9,13 @@ license       = "MIT"
 # Dependencies
 
 requires "nim >= 2.0.0"
+
+
+task test, "Run all tests":
+  exec "nim c -d:FullSets=false tests/tSets.nim"
+  exec "tests/tSets save" # save in packed form
+  exec "tests/tSets load" # verify can load
+  exec "nim c -d:FullSets=true tests/tSets.nim" # recompile full set
+  exec "tests/tSets load" # verify we can _still_ load
+  exec "tests/tSets save" # save again in full
+  exec "tests/tSets load" # check again
