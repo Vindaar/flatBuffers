@@ -20,6 +20,8 @@ proc fullSetsTest() =
   exec "tests/tSets load" # verify we can _still_ load
   exec "tests/tSets save" # save again in full
   exec "tests/tSets load" # check again
+  exec "nim c -d:FullSets=false tests/tSets.nim"
+  exec "tests/tSets load" # read the full representation with a packed writer
   exec "rm tests/flatbuf-file.bin"
 
 task test, "Run all tests":
