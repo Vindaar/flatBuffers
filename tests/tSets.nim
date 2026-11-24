@@ -17,10 +17,6 @@ const testFile = FileWithPerms(
   uid: {5'u16, 8512'u16}
 )
 
-## XXX: turn into a test where we either produce the file or
-## read it. Then compile with and without `FullSets` and verify
-## that we can read both correctly independent of `FullSets`.
-
 const TestFilePath = "tests/flatbuf-file.bin"
 
 proc save() =
@@ -40,5 +36,7 @@ proc load() =
   doAssert flatbufFile.uid == testFile.uid
 
 when isMainModule:
-  import cligen
-  dispatchMulti([save], [load])
+  case paramStr(1)
+  of "save": save()
+  of "load": load()
+  else: quit("Expected save or load", QuitFailure)
